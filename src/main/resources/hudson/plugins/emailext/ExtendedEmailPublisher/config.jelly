@@ -88,6 +88,17 @@
 		<td></td>
 	</tr>
 	
+	
+	 <j:if test="${descriptor.isMatrixProject(it)}"> 
+      <f:entry title="Trigger for matrix projects" help="/plugin/email-ext//help/projectConfig/help-matrixtrigger.html">
+          <select name="instance.matrixTrigger">
+           <j:forEach var="mTrig" items="${descriptor.MATRIX_TRIGGER_VALUES}">
+              <f:option selected="${instance.matrixTrigger.toString()==mTrig}">${mTrig}</f:option>
+           </j:forEach>
+         </select>
+      </f:entry>
+    </j:if>   
+  
 	<!-- Configure advanced properties like per-build-result status email contents, 
 		 whether or not to send email to developers who made changes, and whether or
 		 not to send email to the global list of devs-->

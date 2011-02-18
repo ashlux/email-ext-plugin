@@ -1,8 +1,10 @@
 package hudson.plugins.emailext;
 
+import hudson.matrix.MatrixProject;
 import hudson.model.AbstractProject;
 import hudson.model.Hudson;
 import hudson.plugins.emailext.plugins.EmailTrigger;
+import hudson.plugins.emailext.plugins.trigger.MatrixTrigger;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.Publisher;
 import hudson.util.FormValidation;
@@ -36,7 +38,7 @@ public class ExtendedEmailPublisherDescriptor extends BuildStepDescriptor<Publis
      * Jenkins's own URL, to put into the e-mail.
      */
     private String hudsonUrl;
-
+ 
     /**
      * If non-null, use SMTP-AUTH
      */
@@ -83,9 +85,21 @@ public class ExtendedEmailPublisherDescriptor extends BuildStepDescriptor<Publis
      * This is a global default body for sending emails.
      */
     private String defaultBody;
-
+    
+    
     private boolean overrideGlobalSettings;
 
+    
+    public static final String[] MATRIX_TRIGGER_VALUES;
+	
+	static {
+		MatrixTrigger[] values = MatrixTrigger.values();
+		MATRIX_TRIGGER_VALUES = new String[values.length];
+		for (int i=0; i < values.length; i++) {
+			MATRIX_TRIGGER_VALUES[i] = values[i].toString();
+		}
+	}
+	
     @Override
     public String getDisplayName() {
         return "Editable Email Notification";
@@ -207,6 +221,17 @@ public class ExtendedEmailPublisherDescriptor extends BuildStepDescriptor<Publis
 
         // Save configuration for each trigger type
         ExtendedEmailPublisher m = new ExtendedEmailPublisher();
+        if (formData.has("matrixTrigger")){
+        	String trigger_string = formData.getString("matrixTrigger");
+        	if ((null != trigger_string) && (!trigger_string.isEmpty())){
+        		m.matrixTrigger = MatrixTrigger.valueOf(formData.getString("matrixTrigger"));
+        	}else{
+        		m.matrixTrigger = MatrixTrigger.ONLY_PARENT;
+        	}      
+        }else{
+        	m.matrixTrigger =  null;
+        }
+        
         m.recipientList = listRecipients;
         m.contentType = formData.getString("project_content_type");
         m.defaultSubject = formData.getString("project_default_subject");
@@ -306,6 +331,10 @@ public class ExtendedEmailPublisherDescriptor extends BuildStepDescriptor<Publis
     @Override
     public String getHelpFile() {
         return "/plugin/email-ext/help/main.html";
+    }
+
+    public boolean isMatrixProject(AbstractProject<?, ?> project) {
+        return project instanceof MatrixProject;
     }
 
     public FormValidation doAddressCheck(@QueryParameter final String value)

@@ -3,6 +3,10 @@ package hudson.plugins.emailext;
 import hudson.EnvVars;
 import hudson.Extension;
 import hudson.Launcher;
+import hudson.matrix.MatrixAggregatable;
+import hudson.matrix.MatrixAggregator;
+import hudson.matrix.MatrixBuild;
+import hudson.matrix.MatrixConfiguration;
 import hudson.model.AbstractBuild;
 import hudson.model.BuildListener;
 import hudson.model.Cause;
@@ -11,6 +15,7 @@ import hudson.model.User;
 import hudson.plugins.emailext.plugins.ContentBuilder;
 import hudson.plugins.emailext.plugins.EmailTrigger;
 import hudson.plugins.emailext.plugins.EmailTriggerDescriptor;
+import hudson.plugins.emailext.plugins.trigger.MatrixTrigger;
 import hudson.scm.ChangeLogSet.Entry;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
@@ -39,10 +44,20 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.mail.Address;
+import javax.mail.Message;
+import javax.mail.MessagingException;
+import javax.mail.Transport;
+import javax.mail.internet.AddressException;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeMessage;
+
+import org.apache.log4j.lf5.LogLevel;
+
 /**
  * {@link Publisher} that sends notification e-mail.
  */
-public class ExtendedEmailPublisher extends Notifier {
+public class ExtendedEmailPublisher extends Notifier implements MatrixAggregatable {
 
     private static final Logger LOGGER = Logger.getLogger(Mailer.class.getName());
 
@@ -115,6 +130,9 @@ public class ExtendedEmailPublisher extends Notifier {
      * The default body of the emails for this project.  ($PROJECT_DEFAULT_BODY)
      */
     public String defaultContent;
+	
+	
+	public MatrixTrigger matrixTrigger;
 
     /**
      * Get the list of configured email triggers for this project.
@@ -154,6 +172,13 @@ public class ExtendedEmailPublisher extends Notifier {
     public boolean isConfigured() {
         return !getConfiguredTriggers().isEmpty();
     }
+	
+	public boolean is_execute_on_matrix_nodes(){
+		
+		return (null != this.matrixTrigger &&  
+				(MatrixTrigger.BOTH == matrixTrigger ||
+				 MatrixTrigger.ONLY_CONFIGURATIONS == matrixTrigger));  
+	}
 
     /**
      * Return true if the project has been configured, otherwise returns false
@@ -164,12 +189,19 @@ public class ExtendedEmailPublisher extends Notifier {
 
     @Override
     public boolean prebuild(AbstractBuild<?, ?> build, BuildListener listener) {
-        return _perform(build, listener, true);
+        if ( !(build.getProject() instanceof MatrixConfiguration) || is_execute_on_matrix_nodes())
+        {
+            return _perform(build,listener,true);
+        }
+        return true;
     }
 
     @Override
     public boolean perform(AbstractBuild<?, ?> build, Launcher launcher, BuildListener listener) throws InterruptedException, IOException {
-        return _perform(build, listener, false);
+        if ( !(build.getProject() instanceof MatrixConfiguration) || is_execute_on_matrix_nodes()){
+            return _perform(build,listener,false);
+        }
+        return true;
     }
 
     private boolean _perform(AbstractBuild<?, ?> build, BuildListener listener, boolean forPreBuild) {
@@ -404,4 +436,38 @@ public class ExtendedEmailPublisher extends Notifier {
     public static final class DescriptorImpl
             extends ExtendedEmailPublisherDescriptor {
     }
+
+	public MatrixAggregator createAggregator(MatrixBuild matrixbuild,
+			Launcher launcher, BuildListener buildlistener) {				
+		return new MatrixAggregator(matrixbuild, launcher, buildlistener) {
+			@Override
+            public boolean endBuild() throws InterruptedException, IOException {
+				LOGGER.log(Level.FINER,"end build of " + this.build.getDisplayName());            	
+				
+				// Will be run by parent so we check if needed to be executed by parent 
+				if (matrixTrigger != null &&
+                		(matrixTrigger == MatrixTrigger.ONLY_PARENT
+                    	 || matrixTrigger == MatrixTrigger.BOTH)) {
+
+						return ExtendedEmailPublisher.this._perform(this.build, this.listener,false);                		
+                	}
+                	return true;
+           }
+						
+			
+			@Override		 
+			public boolean startBuild() throws InterruptedException,IOException {
+				LOGGER.log(Level.FINER,"end build of " + this.build.getDisplayName());            					
+				// Will be run by parent so we check if needed to be executed by parent 
+				if (matrixTrigger != null &&
+                		(matrixTrigger == MatrixTrigger.ONLY_PARENT
+                    	 || matrixTrigger == MatrixTrigger.BOTH)) {
+						
+						return ExtendedEmailPublisher.this._perform(this.build, this.listener,true);                		
+                	}
+                	return true;
+			}
+		
+        };
+	}
 }
